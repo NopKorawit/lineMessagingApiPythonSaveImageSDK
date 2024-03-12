@@ -16,6 +16,7 @@ import os
 import sys
 
 from fastapi import Request, FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.messaging import (
@@ -40,11 +41,15 @@ from linebot.v3.webhooks import (
 # get channel_secret and channel_access_token from your environment variable
 channel_secret = os.getenv('LINE_CHANNEL_SECRET', None)
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', None)
+domain_name = os.getenv('DOMAIN_NAME', None)
 if channel_secret is None:
     print('Specify LINE_CHANNEL_SECRET as environment variable.')
     sys.exit(1)
 if channel_access_token is None:
     print('Specify LINE_CHANNEL_ACCESS_TOKEN as environment variable.')
+    sys.exit(1)
+if domain_name is None:
+    print('Specify DOMAIN_NAME as environment variable.')
     sys.exit(1)
 
 configuration = Configuration(
@@ -56,6 +61,8 @@ async_api_client = AsyncApiClient(configuration)
 line_bot_api = AsyncMessagingApi(async_api_client)
 line_bot_api_Blob = AsyncMessagingApiBlob(async_api_client)
 parser = WebhookParser(channel_secret)
+
+
 
 
 @app.post("/callback")
@@ -101,15 +108,32 @@ async def handle_callback(request: Request):
             if content:
                 save_image_content(content, event.message.id)
                 message = "Thank you for sending an image!"
+
+                # Assume save_image_content returns the URL of the saved image
+                image_url = f"{domain_name}/images/{event.message.id}"
+                
+                # Prepare an ImageSendMessage object with the image URL
+                image_message = ImageMessage(
+                    original_content_url=image_url,
+                    preview_image_url=image_url  # Assuming the same URL for simplicity
+                )
+                
+                # Reply with the image message
+                await line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[image_message]
+                    )
+                )
             else:
                 message = "Failed to download image content."
             
-            await line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=message)]
+                await line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=message)]
+                    )
                 )
-            )
             
         
         else:
@@ -129,3 +153,11 @@ def save_image_content(content: bytearray, message_id: str):
     with open(file_path, 'wb') as file:
         file.write(content)
     print(f"Saved image content to {file_path}")
+
+@app.get("/images/{image_id}")
+async def serve_image(image_id: str):
+    file_path = f"images/image_{image_id}.png"  # Assuming you're saving files with this naming convention
+    try:
+        return FileResponse(path=file_path, media_type='image/png')
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Image not found")
