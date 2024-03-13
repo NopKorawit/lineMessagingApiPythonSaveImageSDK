@@ -2,3 +2,4 @@
 .venv_line_test
 *.ipynb
 __pycache__
+*images

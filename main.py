@@ -11,9 +11,9 @@
 #  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #  License for the specific language governing permissions and limitations
 #  under the License.
-
 import os
 import sys
+import json
 
 from fastapi import Request, FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -37,33 +37,16 @@ from linebot.v3.webhooks import (
     ImageMessageContent
 )
 
+from handle_oa import OaHandler
 
-# get channel_secret and channel_access_token from your environment variable
-channel_secret = os.getenv('LINE_CHANNEL_SECRET', None)
-channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', None)
+app = FastAPI()
+oa_handle = OaHandler()
+
 domain_name = os.getenv('DOMAIN_NAME', None)
-if channel_secret is None:
-    print('Specify LINE_CHANNEL_SECRET as environment variable.')
-    sys.exit(1)
-if channel_access_token is None:
-    print('Specify LINE_CHANNEL_ACCESS_TOKEN as environment variable.')
-    sys.exit(1)
+
 if domain_name is None:
     print('Specify DOMAIN_NAME as environment variable.')
     sys.exit(1)
-
-configuration = Configuration(
-    access_token=channel_access_token
-)
-
-app = FastAPI()
-async_api_client = AsyncApiClient(configuration)
-line_bot_api = AsyncMessagingApi(async_api_client)
-line_bot_api_Blob = AsyncMessagingApiBlob(async_api_client)
-parser = WebhookParser(channel_secret)
-
-
-
 
 @app.post("/callback")
 async def handle_callback(request: Request):
@@ -74,6 +57,14 @@ async def handle_callback(request: Request):
     body = body.decode()
     
     print('body',body)
+    content = json.loads(body)
+    print('destination',content['destination'])
+    parser_dict = oa_handle.get_parser_by_destination(content['destination'])
+    parser = parser_dict['parser']
+    line_bot_api = parser_dict['line_bot_api']
+    line_bot_api_blob = parser_dict['line_bot_api_blob']
+    base_id = parser_dict['base_id']
+
     try:
         events = parser.parse(body, signature)
         print(events)
@@ -89,6 +80,8 @@ async def handle_callback(request: Request):
         if isinstance(event.message, TextMessageContent):
             if event.message.text == "สวัสดี":
                 message = "สวัสดีครับ"
+            elif event.message.text == "base_id":
+                message = f'มาจาก base_id ที่ {base_id} ครับ'
             else:
                 message = event.message.text
 
@@ -102,7 +95,7 @@ async def handle_callback(request: Request):
         elif isinstance(event.message, ImageMessageContent):
             # Here you can add code to download the image or perform other actions
             # For now, let's just reply with a simple text message acknowledging the image
-            future  = line_bot_api_Blob.get_message_content(message_id=event.message.id, async_req=True)
+            future  = line_bot_api_blob.get_message_content(message_id=event.message.id, async_req=True)
             # await download_line_message_content(event.message.id)
             content = await future.get()
             if content:
@@ -111,6 +104,7 @@ async def handle_callback(request: Request):
 
                 # Assume save_image_content returns the URL of the saved image
                 image_url = f"{domain_name}/images/{event.message.id}"
+                print(image_url)
                 
                 # Prepare an ImageSendMessage object with the image URL
                 image_message = ImageMessage(
@@ -144,8 +138,6 @@ async def handle_callback(request: Request):
                     messages=[TextMessage(text=message)]
                 )
             )
-
-    return 'OK'
 
 def save_image_content(content: bytearray, message_id: str):
     # Logic to save the content to a file
