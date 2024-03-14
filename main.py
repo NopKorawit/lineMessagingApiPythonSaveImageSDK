@@ -18,12 +18,7 @@ import json
 from fastapi import Request, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
-from linebot.v3.webhook import WebhookParser
 from linebot.v3.messaging import (
-    AsyncApiClient,
-    AsyncMessagingApi,
-    AsyncMessagingApiBlob,
-    Configuration,
     ReplyMessageRequest,
     TextMessage,
     ImageMessage
@@ -48,18 +43,21 @@ if domain_name is None:
     print('Specify DOMAIN_NAME as environment variable.')
     sys.exit(1)
 
-@app.post("/callback")
-async def handle_callback(request: Request):
+@app.post("/callback/{uuid}")
+async def handle_callback(uuid: str,request: Request):
     signature = request.headers['X-Line-Signature']
 
     # get request body as text
     body = await request.body()
     body = body.decode()
     
-    print('body',body)
-    content = json.loads(body)
-    print('destination',content['destination'])
-    parser_dict = oa_handle.get_parser_by_destination(content['destination'])
+    # print('body',body)
+    # content = json.loads(body)
+    # print('destination',content['destination'])
+    # parser_dict = oa_handle.get_parser_by_key(content['destination'])
+
+    parser_dict = oa_handle.get_parser_by_key(uuid)
+
     parser = parser_dict['parser']
     line_bot_api = parser_dict['line_bot_api']
     line_bot_api_blob = parser_dict['line_bot_api_blob']
